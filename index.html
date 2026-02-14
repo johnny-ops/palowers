@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photorealistic Tulip Bouquet</title>
+    <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #fafbfc 0%, #f0f2f5 100%);
+            --text-color: #2b2d42;
+            --accent: #d62828;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: var(--bg-gradient);
+            font-family: 'Georgia', serif;
+            overflow: hidden;
+            color: var(--text-color);
+        }
+
+        #canvas-wrapper {
+            position: relative;
+            width: 100%;
+            height: 85vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        canvas {
+            max-width: 100%;
+            max-height: 100%;
+            filter: drop-shadow(0 30px 60px rgba(0,0,0,0.2));
+            cursor: pointer;
+        }
+
+        .interface {
+            position: absolute;
+            bottom: 20px;
+            text-align: center;
+            width: 100%;
+            z-index: 10;
+            opacity: 0;
+            animation: fadeInUp 2s ease forwards 5s;
+        }
+
+        h1 {
+            font-size: 2rem;
+            font-weight: 300;
+            letter-spacing: 4px;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            color: var(--text-color);
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .btn-regrow {
+            background: transparent;
+            border: 2px solid var(--accent);
+            color: var(--accent);
+            padding: 14px 35px;
+            border-radius: 30px;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            letter-spacing: 1.5px;
+            font-weight: 500;
+        }
+
+        .btn-regrow:hover {
+            background: var(--accent);
+            color: white;
+            transform: scale(1.08);
+            box-shadow: 0 12px 24px rgba(214, 40, 40, 0.3);
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .light-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.1) 0%, transparent 60%);
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+<div id="canvas-wrapper">
+    <div class="light-overlay"></div>
+    <canvas id="tulipCanvas"></canvas>
+    <div class="interface">
+        <h1>A Bouquet For You</h1>
+        <button class="btn-regrow" onclick="init()">Bloom Again</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('tulipCanvas');
+    const ctx = canvas.getContext('2d');
+
+    let w, h;
+    let bouquet = [];
+    let animationProgress = 0;
+    let isDrawing = false;
+    let time = 0;
+    let lightSource = { x: 0.3, y: 0.2 }; // Top-left light
+
+    const TULIP_COUNT = 15;
+
+    // Ultra-realistic tulip color palettes with subsurface scattering simulation
+    const REALISTIC_TULIP_COLORS = [
+        {
+            name: 'Red Emperor',
+            base: '#8B1538',
+            outer: ['#6B0F28', '#8B1538', '#A51D48', '#C9184A'],
+            inner: ['#FF4D6D', '#FF6B81', '#FF8FA3', '#FFE5EA'],
+            shadow: '#4A0A1C',
+            highlight: '#FF9FB5',
+            stamen: '#2A1500',
+            anthers: '#FFD93D'
+        },
+        {
+            name: 'Pink Impression',
+            base: '#E85D9A',
+            outer: ['#B8457A', '#D85590', '#E85D9A', '#F875AB'],
+            inner: ['#FFB3D9', '#FFC7E3', '#FFDAEC', '#FFF0F6'],
+            shadow: '#8A3458',
+            highlight: '#FFE0F0',
+            stamen: '#3D2600',
+            anthers: '#4A3300'
+        },
+        {
+            name: 'Golden Apeldoorn',
+            base: '#E5A320',
+            outer: ['#B88419', '#CC9420', '#E5A320', '#FFB93D'],
+            inner: ['#FFD666', '#FFE082', '#FFEC9E', '#FFFAD1'],
+            shadow: '#8A6315',
+            highlight: '#FFF4D4',
+            stamen: '#2A1A00',
+            anthers: '#1A1200'
+        },
+        {
+            name: 'Purple Prince',
+            base: '#6A1B9A',
+            outer: ['#4A148C', '#5E1791', '#6A1B9A', '#7B2AA8'],
+            inner: ['#BA68C8', '#CE93D8', '#E1BEE7', '#F3E5F5'],
+            shadow: '#38006B',
+            highlight: '#F8E9FF',
+            stamen: '#2A0040',
+            anthers: '#5A4A00'
+        },
+        {
+            name: 'White Triumphator',
+            base: '#FAFAFA',
+            outer: ['#E8E8E8', '#F2F2F2', '#FAFAFA', '#FFFFFF'],
+            inner: ['#FFFFFF', '#FFFFFF', '#FFFFFE', '#FFFFFF'],
+            shadow: '#D0D0D0',
+            highlight: '#FFFFFF',
+            stamen: '#5A5000',
+            anthers: '#6B6100'
+        },
+        {
+            name: 'Orange Emperor',
+            base: '#E86730',
+            outer: ['#CC4D1F', '#DD5A28', '#E86730', '#FF7A3D'],
+            inner: ['#FF9B6E', '#FFB088', '#FFC4A3', '#FFE8D9'],
+            shadow: '#9A3618',
+            highlight: '#FFD9C4',
+            stamen: '#402200',
+            anthers: '#332000'
+        },
+        {
+            name: 'Salmon Impression',
+            base: '#FA9189',
+            outer: ['#E07A73', '#ED8680', '#FA9189', '#FF9E97'],
+            inner: ['#FFB3AE', '#FFC4C0', '#FFD5D2', '#FFEAE8'],
+            shadow: '#C96962',
+            highlight: '#FFF0EE',
+            stamen: '#4A2015',
+            anthers: '#5A3020'
+        }
+    ];
+
+    function resize() {
+        const dpr = window.devicePixelRatio || 1;
+        w = window.innerWidth > 900 ? 850 : window.innerWidth * 0.95;
+        h = window.innerHeight > 900 ? 1050 : window.innerHeight * 0.85;
+        canvas.width = w * dpr;
+        canvas.height = h * dpr;
+        canvas.style.width = w + 'px';
+        canvas.style.height = h + 'px';
+        ctx.scale(dpr, dpr);
+    }
+
+    // Noise function for organic texture
+    function noise(x, y, seed = 0) {
+        const n = Math.sin(x * 12.9898 + y * 78.233 + seed) * 43758.5453;
+        return (n - Math.floor(n)) * 2 - 1;
+    }
+
+    class PhotorealisticTulip {
+        constructor(x, y, scale, colorScheme, delay, rotation, depth) {
+            this.x = x;
+            this.y = y;
+            this.targetScale = scale;
+            this.currentScale = 0;
+            this.colors = colorScheme;
+            this.delay = delay;
+            this.rotation = rotation;
+            this.depth = depth; // 0 = back, 1 = front
+            this.stemWidth = 3.5 + Math.random() * 1.8;
+            this.openness = 0;
+            this.maxOpenness = 0.25 + Math.random() * 0.35;
+            this.swayOffset = Math.random() * Math.PI * 2;
+            this.petalCount = 6;
+
+            // Unique characteristics
+            this.textureVariation = Math.random();
+            this.curvature = 0.3 + Math.random() * 0.4;
+            this.irregularity = Math.random() * 0.1;
+
+            // Generate leaves for this tulip
+            this.leaves = [];
+            this.generateLeaves();
+        }
+
+        generateLeaves() {
+            const leafCount = 2 + Math.floor(Math.random() * 2); // 2-3 leaves per tulip
+
+            for (let i = 0; i < leafCount; i++) {
+                const bundleX = w / 2;
+                const bundleY = h * 0.88;
+
+                // Position leaves at different heights along stem
+                const stemPosition = 0.25 + (i / leafCount) * 0.45;
+
+                const leafX = this.x + (bundleX - this.x) * stemPosition;
+                const leafY = this.y + (bundleY - this.y) * stemPosition;
+
+                const side = i % 2 === 0 ? 1 : -1;
+
+                this.leaves.push({
+                    x: leafX,
+                    y: leafY,
+                    angle: side * (0.35 + Math.random() * 0.6),
+                    length: 100 + Math.random() * 60,
+                    width: 20 + Math.random() * 15,
+                    delay: this.delay + 0.15 + i * 0.12,
+                    growth: 0,
+                    side: side,
+                    curve: (Math.random() - 0.5) * 0.4,
+                    twist: (Math.random() - 0.5) * 0.2
+                });
+            }
+        }
+
+        drawStemWithLeaves(progress) {
+            if (progress < this.delay) return;
+            const p = Math.min(1, (progress - this.delay) * 1.4);
+
+            const sway = Math.sin(time * 0.0012 + this.swayOffset) * 2 * this.depth;
+            const bundleX = w / 2;
+            const bundleY = h * 0.88;
+
+            ctx.save();
+
+            // Calculate stem path for leaf attachment
+            const stemPath = [];
+            for (let t = 0; t <= 1; t += 0.01) {
+                const x = this.bezierPoint(this.x + sway * 0.3, this.x + sway * 0.5, 
+                    this.x + (bundleX - this.x) * 0.5 + sway * 0.7, bundleX, t);
+                const y = this.bezierPoint(this.y, this.y + (bundleY - this.y) * 0.35, 
+                    this.y + (bundleY - this.y) * 0.65, bundleY, t);
+                stemPath.push({ x, y });
+            }
+
+            // Draw stem shadow (softer and more realistic)
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+            ctx.lineWidth = this.stemWidth + 3;
+            ctx.lineCap = 'round';
+
+            ctx.moveTo(this.x + sway * 0.3 + 3, this.y + 3);
+            ctx.bezierCurveTo(
+                this.x + sway * 0.5 + 3, this.y + (bundleY - this.y) * 0.35 + 3,
+                this.x + (bundleX - this.x) * 0.5 + sway * 0.7 + 3, this.y + (bundleY - this.y) * 0.65 + 3,
+                bundleX + 3, bundleY + 3
+            );
+
+            ctx.filter = 'blur(3px)';
+            ctx.setLineDash([2000]);
+            ctx.lineDashOffset = 2000 * (1 - p);
+            ctx.stroke();
+            ctx.filter = 'none';
+
+            // Main stem with realistic gradient and lighting
+            const stemGradAngle = Math.atan2(bundleY - this.y, bundleX - this.x);
+            const perpX = Math.cos(stemGradAngle + Math.PI / 2);
+            const perpY = Math.sin(stemGradAngle + Math.PI / 2);
+
+            const stemMidX = (this.x + bundleX) / 2;
+            const stemMidY = (this.y + bundleY) / 2;
+
+            const stemGrad = ctx.createLinearGradient(
+                stemMidX + perpX * this.stemWidth * 2,
+                stemMidY + perpY * this.stemWidth * 2,
+                stemMidX - perpX * this.stemWidth * 2,
+                stemMidY - perpY * this.stemWidth * 2
+            );
+
+            // Light side
+            stemGrad.addColorStop(0, '#6FA855');
+            stemGrad.addColorStop(0.3, '#5A9240');
+            stemGrad.addColorStop(0.5, '#4A7C35');
+            // Shadow side
+            stemGrad.addColorStop(0.7, '#3A6628');
+            stemGrad.addColorStop(1, '#2A5020');
+
+            ctx.beginPath();
+            ctx.strokeStyle = stemGrad;
+            ctx.lineWidth = this.stemWidth;
+
+            ctx.moveTo(this.x + sway * 0.3, this.y);
+            ctx.bezierCurveTo(
+                this.x + sway * 0.5, this.y + (bundleY - this.y) * 0.35,
+                this.x + (bundleX - this.x) * 0.5 + sway * 0.7, this.y + (bundleY - this.y) * 0.65,
+                bundleX, bundleY
+            );
+
+            ctx.stroke();
+
+            // Highlight on light-facing side of stem
+            ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+            ctx.lineWidth = 1.3;
+            ctx.setLineDash([]);
+
+            ctx.beginPath();
+            ctx.moveTo(this.x + sway * 0.3 - perpX * this.stemWidth * 0.35, 
+                       this.y - perpY * this.stemWidth * 0.35);
+            ctx.bezierCurveTo(
+                this.x + sway * 0.5 - perpX * this.stemWidth * 0.35, 
+                this.y + (bundleY - this.y) * 0.35 - perpY * this.stemWidth * 0.35,
+                this.x + (bundleX - this.x) * 0.5 + sway * 0.7 - perpX * this.stemWidth * 0.35, 
+                this.y + (bundleY - this.y) * 0.65 - perpY * this.stemWidth * 0.35,
+                bundleX - perpX * this.stemWidth * 0.35, 
+                bundleY - perpY * this.stemWidth * 0.35
+            );
+            ctx.stroke();
+
+            ctx.restore();
+
+            // Draw leaves along stem
+            this.drawLeaves(progress, sway);
+        }
+
+        bezierPoint(p0, p1, p2, p3, t) {
+            const t2 = t * t;
+            const t3 = t2 * t;
+            const mt = 1 - t;
+            const mt2 = mt * mt;
+            const mt3 = mt2 * mt;
+            return p0 * mt3 + 3 * p1 * mt2 * t + 3 * p2 * mt * t2 + p3 * t3;
+        }
+
+        drawLeaves(progress, stemSway) {
+            this.leaves.forEach(leaf => {
+                if (progress < leaf.delay) return;
+                leaf.growth = Math.min(1, (progress - leaf.delay) * 1.1);
+
+                const sway = Math.sin(time * 0.0009 + leaf.angle) * 1.5;
+
+                ctx.save();
+                ctx.translate(leaf.x, leaf.y);
+                ctx.rotate(leaf.angle + sway * 0.025 + leaf.twist * leaf.growth);
+
+                // Leaf shadow with blur
+                ctx.shadowBlur = 8;
+                ctx.shadowColor = 'rgba(0,0,0,0.2)';
+                ctx.shadowOffsetX = leaf.side * 4;
+                ctx.shadowOffsetY = 4;
+
+                // Create realistic leaf gradient with light simulation
+                const leafAngle = leaf.angle;
+                const lightDot = Math.cos(leafAngle) * 0.5 + 0.5; // How much light hits the leaf
+
+                const leafGrad = ctx.createLinearGradient(
+                    -leaf.width * 0.5 * leaf.growth, 0,
+                    leaf.width * 0.5 * leaf.growth, 0
+                );
+
+                // Light side (based on light source)
+                leafGrad.addColorStop(0, `rgba(90, 130, 60, ${0.85 + lightDot * 0.15})`);
+                leafGrad.addColorStop(0.15, `rgba(105, 155, 75, ${0.9 + lightDot * 0.1})`);
+                leafGrad.addColorStop(0.4, `rgba(120, 175, 90, ${0.95})`);
+                leafGrad.addColorStop(0.6, `rgba(110, 165, 80, ${0.95})`);
+                // Shadow side
+                leafGrad.addColorStop(0.85, `rgba(85, 140, 65, ${0.9 - lightDot * 0.1})`);
+                leafGrad.addColorStop(1, `rgba(70, 120, 50, ${0.85 - lightDot * 0.15})`);
+
+                ctx.fillStyle = leafGrad;
+                ctx.beginPath();
+
+                // Accurate tulip leaf shape (elongated with parallel sides)
+                const length = leaf.length * leaf.growth;
+                const width = leaf.width * leaf.growth;
+
+                ctx.moveTo(0, 0);
+
+                // Leaf wraps slightly around stem at base
+                ctx.bezierCurveTo(
+                    width * 0.15, length * 0.05,
+                    width * 0.45, length * 0.15,
+                    width * 0.48, length * 0.35
+                );
+
+                // Long parallel edge
+                ctx.lineTo(width * 0.45, length * 0.75);
+
+                // Pointed tip
+                ctx.bezierCurveTo(
+                    width * 0.35, length * 0.90,
+                    width * 0.15, length * 0.97,
+                    0, length
+                );
+
+                // Other side
+                ctx.bezierCurveTo(
+                    -width * 0.15, length * 0.97,
+                    -width * 0.35, length * 0.90,
+                    -width * 0.45, length * 0.75
+                );
+
+                ctx.lineTo(-width * 0.48, length * 0.35);
+
+                ctx.bezierCurveTo(
+                    -width * 0.45, length * 0.15,
+                    -width * 0.15, length * 0.05,
+                    0, 0
+                );
+
+                ctx.fill();
+                ctx.shadowBlur = 0;
+
+                // Central vein (prominent)
+                ctx.strokeStyle = 'rgba(60, 100, 40, 0.6)';
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.quadraticCurveTo(
+                    width * 0.05 * leaf.curve, length * 0.5,
+                    0, length * 0.95
+                );
+                ctx.stroke();
+
+                // Parallel veins characteristic of monocots
+                ctx.lineWidth = 0.9;
+                ctx.globalAlpha = 0.35;
+
+                const veinCount = 8;
+                for (let i = 1; i <= veinCount; i++) {
+                    const offset = (i / (veinCount + 1) - 0.5) * width * 0.7;
+
+                    ctx.beginPath();
+                    ctx.moveTo(offset, length * 0.08);
+                    ctx.lineTo(offset, length * 0.92);
+                    ctx.stroke();
+                }
+
+                // Light reflection on leaf surface
+                ctx.globalAlpha = 0.35 * lightDot;
+                ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(-width * 0.25, length * 0.25);
+                ctx.quadraticCurveTo(
+                    -width * 0.15, length * 0.5,
+                    -width * 0.2, length * 0.75
+                );
+                ctx.stroke();
+
+                // Leaf edge highlight
+                ctx.globalAlpha = 0.2;
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = 'rgba(180, 220, 150, 0.8)';
+                ctx.beginPath();
+                ctx.moveTo(0, length * 0.95);
+                ctx.quadraticCurveTo(
+                    width * 0.25, length * 0.85,
+                    width * 0.45, length * 0.4
+                );
+                ctx.stroke();
+
+                ctx.restore();
+            });
+        }
+
+        drawFlower(progress) {
+            if (progress < this.delay + 0.3) return;
+            const p = Math.min(1, (progress - (this.delay + 0.3)) * 1.3);
+            this.currentScale = this.targetScale * p;
+
+            this.openness = Math.min(this.maxOpenness, (progress - (this.delay + 0.6)) * 0.25);
+
+            const sway = Math.sin(time * 0.0012 + this.swayOffset) * 1.8 * this.depth;
+
+            ctx.save();
+            ctx.translate(this.x + sway, this.y);
+            ctx.rotate(this.rotation);
+            ctx.scale(this.currentScale, this.currentScale);
+
+            // Draw petals in correct botanical order
+            this.drawPetalLayer('back');
+            this.drawReproductiveCenter();
+            this.drawPetalLayer('front');
+
+            ctx.restore();
+        }
+
+        drawPetalLayer(layer) {
+            const petalAngles = layer === 'back' 
+                ? [Math.PI, Math.PI * 1.33, Math.PI * 0.67] // 3 back petals
+                : [0, Math.PI * 0.33, Math.PI * 1.67]; // 3 front petals
+
+            petalAngles.forEach((angle, idx) => {
+                const isCenter = idx === 0;
+                const opening = layer === 'front' ? this.openness : 0;
+                const petalRotation = angle + (layer === 'front' && !isCenter ? opening * 0.4 : 0);
+
+                this.drawPhotorealisticPetal(
+                    petalRotation,
+                    layer === 'back',
+                    isCenter,
+                    idx
+                );
+            });
+        }
+
+        drawPhotorealisticPetal(angle, isBack, isCenter, index) {
+            ctx.save();
+            ctx.rotate(angle);
+
+            const width = Math.abs(28 + this.irregularity * 8);
+            const height = Math.abs(56 + this.irregularity * 12);
+            const opacity = isBack ? 0.92 : 1;
+
+            // Multi-layered shadow for depth
+            if (!isBack) {
+                for (let i = 3; i > 0; i--) {
+                    ctx.shadowBlur = 6 + i * 4;
+                    ctx.shadowColor = `rgba(0,0,0,${0.08 * i})`;
+                    ctx.shadowOffsetX = 3 + i;
+                    ctx.shadowOffsetY = 3 + i;
+                }
+            }
+
+            // Complex gradient simulating subsurface scattering
+            const gradient = ctx.createRadialGradient(
+                0, -height * 0.4, height * 0.1,
+                0, -height * 0.5, height * 0.9
+            );
+
+            // Inner glow (light passing through petal)
+            gradient.addColorStop(0, this.colors.inner[3]);
+            gradient.addColorStop(0.15, this.colors.inner[2]);
+            gradient.addColorStop(0.35, this.colors.inner[1]);
+            gradient.addColorStop(0.5, this.colors.inner[0]);
+            // Mid-tone
+            gradient.addColorStop(0.65, this.colors.outer[2]);
+            gradient.addColorStop(0.8, this.colors.outer[1]);
+            // Outer edge (deeper color)
+            gradient.addColorStop(0.95, this.colors.outer[0]);
+            gradient.addColorStop(1, this.colors.shadow);
+
+            ctx.globalAlpha = opacity;
+            ctx.fillStyle = gradient;
+
+            // Petal shape with natural irregularities
+            ctx.beginPath();
+            ctx.moveTo(0, 8);
+
+            // Left edge with subtle variations
+            const leftVar = noise(index, 0, this.textureVariation) * this.irregularity * 3;
+            ctx.bezierCurveTo(
+                -width * (0.52 + leftVar * 0.1), -height * 0.2,
+                -width * (0.8 + leftVar * 0.05), -height * 0.48,
+                -width * (0.42 + leftVar * 0.08), -height * 0.88
+            );
+
+            // Top curve
+            const topVar = noise(index, 1, this.textureVariation) * this.irregularity * 3;
+            ctx.bezierCurveTo(
+                -width * (0.22 + topVar * 0.05), -height * (1.0 + topVar * 0.03),
+                width * (0.22 - topVar * 0.05), -height * (1.0 + topVar * 0.03),
+                width * (0.42 - leftVar * 0.08), -height * 0.88
+            );
+
+            // Right edge
+            ctx.bezierCurveTo(
+                width * (0.8 - leftVar * 0.05), -height * 0.48,
+                width * (0.52 - leftVar * 0.1), -height * 0.2,
+                0, 8
+            );
+
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Multiple vein layers for realism
+            ctx.globalAlpha = 0.12;
+            ctx.strokeStyle = this.colors.shadow;
+            ctx.lineWidth = 0.6;
+
+            // Main veins
+            for (let i = -2; i <= 2; i++) {
+                const veinX = i * width * 0.18;
+                const veinCurve = noise(i, 2, this.textureVariation) * 0.15;
+
+                ctx.beginPath();
+                ctx.moveTo(veinX, 5);
+                ctx.quadraticCurveTo(
+                    veinX * (0.8 + veinCurve), -height * 0.5,
+                    veinX * (0.6 + veinCurve), -height * 0.88
+                );
+                ctx.stroke();
+            }
+
+            // Central vein (most prominent)
+            ctx.globalAlpha = 0.25;
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.moveTo(0, 8);
+            ctx.lineTo(0, -height * 0.92);
+            ctx.stroke();
+
+            // Secondary veins (branching effect)
+            ctx.globalAlpha = 0.08;
+            ctx.lineWidth = 0.4;
+            for (let i = 0; i < 12; i++) {
+                const y = -height * (0.2 + i * 0.06);
+                const spread = width * 0.3;
+                ctx.beginPath();
+                ctx.moveTo(-spread * 0.3, y);
+                ctx.quadraticCurveTo(0, y - 5, spread * 0.3, y);
+                ctx.stroke();
+            }
+
+            // Specular highlight (light reflection)
+            const lightAngle = angle + this.rotation;
+            const facingLight = Math.cos(lightAngle - Math.PI * 0.3);
+
+            if (facingLight > 0 && !isBack) {
+                ctx.globalAlpha = 0.5 * facingLight;
+                ctx.strokeStyle = this.colors.highlight;
+                ctx.lineWidth = 2.5;
+                ctx.lineCap = 'round';
+
+                ctx.beginPath();
+                ctx.moveTo(-width * 0.28, -height * 0.72);
+                ctx.quadraticCurveTo(
+                    -width * 0.14, -height * 0.88,
+                    width * 0.05, -height * 0.96
+                );
+                ctx.stroke();
+
+                // Additional soft glow
+                ctx.globalAlpha = 0.25 * facingLight;
+                ctx.fillStyle = this.colors.highlight;
+                ctx.beginPath();
+                ctx.ellipse(
+                    -width * 0.15, -height * 0.75,
+                    Math.abs(width * 0.3), Math.abs(height * 0.2),
+                    -0.3, 0, Math.PI * 2
+                );
+                ctx.fill();
+            }
+
+            // Edge lighting
+            ctx.globalAlpha = 0.3;
+            ctx.strokeStyle = this.colors.outer[3];
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(-width * 0.42, -height * 0.88);
+            ctx.quadraticCurveTo(
+                -width * 0.22, -height * 0.98,
+                0, -height * 1.0
+            );
+            ctx.stroke();
+
+            // Color variation spots (natural imperfections)
+            if (this.textureVariation > 0.5) {
+                ctx.globalAlpha = 0.1;
+                for (let i = 0; i < 3; i++) {
+                    const spotX = noise(i, 3, this.textureVariation) * width * 0.4;
+                    const spotY = -height * (0.3 + noise(i, 4, this.textureVariation) * 0.4);
+                    const spotSize = Math.abs(5 + noise(i, 5, this.textureVariation) * 8);
+
+                    ctx.fillStyle = this.colors.outer[Math.floor(Math.random() * 2)];
+                    ctx.beginPath();
+                    ctx.ellipse(spotX, spotY, spotSize, spotSize * 0.7, 
+                        noise(i, 6, this.textureVariation), 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            ctx.restore();
+        }
+
+        drawReproductiveCenter() {
+            if (this.openness < 0.15) return;
+
+            const centerVis = Math.min(1, (this.openness - 0.15) * 4);
+
+            ctx.save();
+            ctx.globalAlpha = centerVis;
+
+            // Pistil (ovary)
+            const pistilGrad = ctx.createRadialGradient(0, -18, 0, 0, -18, 8);
+            pistilGrad.addColorStop(0, '#B8D88C');
+            pistilGrad.addColorStop(0.4, '#9ACD32');
+            pistilGrad.addColorStop(0.7, '#7AB82D');
+            pistilGrad.addColorStop(1, '#5A9020');
+
+            ctx.fillStyle = pistilGrad;
+            ctx.shadowBlur = 4;
+            ctx.shadowColor = 'rgba(0,0,0,0.3)';
+
+            ctx.beginPath();
+            ctx.ellipse(0, -18, Math.abs(5), Math.abs(9), 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Stigma (top of pistil)
+            ctx.fillStyle = '#6B8E23';
+            ctx.beginPath();
+            ctx.ellipse(0, -24, Math.abs(4), Math.abs(3), 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.shadowBlur = 0;
+
+            // 6 Stamens arranged in circle
+            for (let i = 0; i < 6; i++) {
+                const angle = (i / 6) * Math.PI * 2;
+                const radius = 9;
+                const x = Math.cos(angle) * radius;
+                const y = -18 + Math.sin(angle) * radius;
+
+                // Filament (thin stalk)
+                ctx.strokeStyle = '#F5E6A0';
+                ctx.lineWidth = 1.2;
+                ctx.beginPath();
+                ctx.moveTo(0, -14);
+                ctx.lineTo(x, y);
+                ctx.stroke();
+
+                // Anther (pollen sac) with realistic color
+                const antherGrad = ctx.createRadialGradient(x, y, 0, x, y, 3);
+                antherGrad.addColorStop(0, this.colors.anthers);
+                antherGrad.addColorStop(0.6, this.colors.stamen);
+                antherGrad.addColorStop(1, this.colors.shadow);
+
+                ctx.fillStyle = antherGrad;
+                ctx.shadowBlur = 2;
+                ctx.shadowColor = 'rgba(0,0,0,0.4)';
+
+                ctx.beginPath();
+                ctx.ellipse(x, y, Math.abs(2.2), Math.abs(3.5), angle, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Pollen texture
+                ctx.fillStyle = 'rgba(255, 223, 100, 0.6)';
+                for (let p = 0; p < 3; p++) {
+                    const px = x + (Math.random() - 0.5) * 2;
+                    const py = y + (Math.random() - 0.5) * 2;
+                    ctx.fillRect(px, py, 0.5, 0.5);
+                }
+            }
+
+            ctx.shadowBlur = 0;
+            ctx.restore();
+        }
+    }
+
+    class RealisticPaperWrap {
+        draw(progress) {
+            const p = Math.min(1, progress * 1.15);
+            const cx = w / 2;
+            const baseY = h * 0.91;
+
+            ctx.save();
+            ctx.globalAlpha = p * 0.96;
+
+            // Paper texture using noise
+            ctx.fillStyle = '#F5E6D3';
+            ctx.shadowBlur = 30;
+            ctx.shadowColor = 'rgba(0,0,0,0.18)';
+
+            // Main wrapper
+            ctx.beginPath();
+            ctx.moveTo(cx - 230, h * 0.42);
+            ctx.lineTo(cx + 230, h * 0.42);
+            ctx.lineTo(cx + 75, baseY);
+            ctx.lineTo(cx - 75, baseY);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.shadowBlur = 0;
+
+            // Paper folds (lighting)
+            ctx.fillStyle = 'rgba(0,0,0,0.04)';
+            ctx.beginPath();
+            ctx.moveTo(cx - 210, h * 0.48);
+            ctx.lineTo(cx - 25, baseY - 12);
+            ctx.lineTo(cx - 65, baseY);
+            ctx.lineTo(cx - 190, h * 0.52);
+            ctx.fill();
+
+            ctx.fillStyle = 'rgba(255,255,255,0.3)';
+            ctx.beginPath();
+            ctx.moveTo(cx + 210, h * 0.48);
+            ctx.lineTo(cx + 25, baseY - 12);
+            ctx.lineTo(cx + 65, baseY);
+            ctx.lineTo(cx + 190, h * 0.52);
+            ctx.fill();
+
+            // Paper texture detail
+            ctx.globalAlpha = p * 0.15;
+            for (let i = 0; i < 200; i++) {
+                const px = cx - 200 + Math.random() * 400;
+                const py = h * 0.42 + Math.random() * (baseY - h * 0.42);
+                const size = Math.random() * 2;
+                ctx.fillStyle = Math.random() > 0.5 ? 'rgba(139,115,85,0.3)' : 'rgba(255,255,255,0.3)';
+                ctx.fillRect(px, py, size, size);
+            }
+
+            ctx.globalAlpha = p;
+
+            // Ribbon
+            if (progress > 0.55) {
+                this.drawRibbon(cx, baseY, (progress - 0.55) * 2.2);
+            }
+
+            ctx.restore();
+        }
+
+        drawRibbon(cx, by, rp) {
+            rp = Math.min(1, rp);
+
+            ctx.save();
+            ctx.globalAlpha = rp;
+
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = 'rgba(0,0,0,0.25)';
+
+            // Ribbon with satin texture
+            const ribbonGrad = ctx.createLinearGradient(cx - 70, h * 0.76, cx + 70, h * 0.76 + 20);
+            ribbonGrad.addColorStop(0, '#A01228');
+            ribbonGrad.addColorStop(0.25, '#C9184A');
+            ribbonGrad.addColorStop(0.5, '#E63956');
+            ribbonGrad.addColorStop(0.75, '#C9184A');
+            ribbonGrad.addColorStop(1, '#A01228');
+
+            ctx.fillStyle = ribbonGrad;
+            ctx.beginPath();
+            ctx.roundRect(cx - 65 * rp, h * 0.76, 130 * rp, 20, 4);
+            ctx.fill();
+
+            // Satin shine
+            ctx.fillStyle = 'rgba(255,255,255,0.4)';
+            ctx.beginPath();
+            ctx.roundRect(cx - 60 * rp, h * 0.76 + 4, 120 * rp, 7, 3);
+            ctx.fill();
+
+            ctx.shadowBlur = 6;
+
+            // Bow loops with depth
+            ctx.strokeStyle = '#8B1538';
+            ctx.lineWidth = 2.5;
+
+            // Left bow
+            const leftBowGrad = ctx.createRadialGradient(cx - 28, h * 0.77, 0, cx - 28, h * 0.77, 22);
+            leftBowGrad.addColorStop(0, '#E63956');
+            leftBowGrad.addColorStop(0.7, '#C9184A');
+            leftBowGrad.addColorStop(1, '#A01228');
+
+            ctx.fillStyle = leftBowGrad;
+            ctx.beginPath();
+            ctx.ellipse(cx - 28, h * 0.77, Math.abs(24 * rp), Math.abs(16 * rp), -0.35, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            // Right bow
+            const rightBowGrad = ctx.createRadialGradient(cx + 28, h * 0.77, 0, cx + 28, h * 0.77, 22);
+            rightBowGrad.addColorStop(0, '#E63956');
+            rightBowGrad.addColorStop(0.7, '#C9184A');
+            rightBowGrad.addColorStop(1, '#A01228');
+
+            ctx.fillStyle = rightBowGrad;
+            ctx.beginPath();
+            ctx.ellipse(cx + 28, h * 0.77, Math.abs(24 * rp), Math.abs(16 * rp), 0.35, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            // Center knot
+            const knotGrad = ctx.createRadialGradient(cx, h * 0.77, 0, cx, h * 0.77, 7);
+            knotGrad.addColorStop(0, '#C9184A');
+            knotGrad.addColorStop(1, '#8B1538');
+
+            ctx.fillStyle = knotGrad;
+            ctx.beginPath();
+            ctx.arc(cx, h * 0.77, 7 * rp, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Ribbon tails
+            ctx.fillStyle = '#C9184A';
+            ctx.beginPath();
+            ctx.moveTo(cx - 16, h * 0.785);
+            ctx.lineTo(cx - 22, h * 0.86);
+            ctx.lineTo(cx - 28, h * 0.87);
+            ctx.lineTo(cx - 20, h * 0.79);
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(cx + 16, h * 0.785);
+            ctx.lineTo(cx + 22, h * 0.86);
+            ctx.lineTo(cx + 28, h * 0.87);
+            ctx.lineTo(cx + 20, h * 0.79);
+            ctx.fill();
+
+            ctx.restore();
+        }
+    }
+
+    function init() {
+        resize();
+        animationProgress = 0;
+        time = 0;
+        bouquet = [];
+
+        const wrapper = new RealisticPaperWrap();
+
+        // Create sophisticated bouquet arrangement
+        const arrangements = [
+            // Front row (5 tulips) - largest and most visible
+            ...Array.from({length: 5}, (_, i) => ({
+                x: w/2 - 210 + i * 105 + (Math.random() - 0.5) * 25,
+                y: h * 0.36 + (Math.random() - 0.5) * 35,
+                depth: 0.9 + Math.random() * 0.1,
+                rotation: (Math.random() - 0.5) * 0.35
+            })),
+            // Middle row (6 tulips)
+            ...Array.from({length: 6}, (_, i) => ({
+                x: w/2 - 225 + i * 90 + (Math.random() - 0.5) * 30,
+                y: h * 0.29 + (Math.random() - 0.5) * 30,
+                depth: 0.6 + Math.random() * 0.2,
+                rotation: (Math.random() - 0.5) * 0.45
+            })),
+            // Back row (4 tulips) - smaller, more distant
+            ...Array.from({length: 4}, (_, i) => ({
+                x: w/2 - 135 + i * 90 + (Math.random() - 0.5) * 35,
+                y: h * 0.23 + (Math.random() - 0.5) * 25,
+                depth: 0.3 + Math.random() * 0.2,
+                rotation: (Math.random() - 0.5) * 0.55
+            }))
+        ];
+
+        arrangements.forEach((pos, i) => {
+            const colorScheme = REALISTIC_TULIP_COLORS[
+                Math.floor(Math.random() * REALISTIC_TULIP_COLORS.length)
+            ];
+            const delay = 0.15 + Math.random() * 0.65;
+            // Atmospheric perspective: farther = smaller
+            const scale = 0.65 + pos.depth * 0.4 + Math.random() * 0.15;
+
+            bouquet.push(new PhotorealisticTulip(
+                pos.x, pos.y, scale, colorScheme, delay, pos.rotation, pos.depth
+            ));
+        });
+
+        // Sort by depth for correct rendering
+        bouquet.sort((a, b) => a.depth - b.depth);
+
+        wrapper.drawFunc = () => wrapper.draw(animationProgress);
+        bouquet.wrapper = wrapper;
+
+        if (!isDrawing) {
+            isDrawing = true;
+            animate();
+        }
+    }
+
+    function animate() {
+        time += 16;
+
+        // Clear with subtle gradient background
+        const bgGrad = ctx.createRadialGradient(w * 0.3, h * 0.2, 0, w/2, h/2, Math.max(w, h) * 0.8);
+        bgGrad.addColorStop(0, '#FFFFFF');
+        bgGrad.addColorStop(0.5, '#FAFBFC');
+        bgGrad.addColorStop(1, '#F5F6F8');
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(0, 0, w, h);
+
+        animationProgress += 0.0045;
+
+        // Draw paper wrapper
+        if (bouquet.wrapper) {
+            bouquet.wrapper.drawFunc();
+        }
+
+        // Draw all stems and leaves first (back to front)
+        bouquet.forEach(t => t.drawStemWithLeaves(animationProgress));
+
+        // Then draw all flower heads (back to front)
+        bouquet.forEach(t => t.drawFlower(animationProgress));
+
+        // Gentle floating animation
+        if (animationProgress > 1.8) {
+            const hover = Math.sin(time * 0.0018) * 4;
+            canvas.style.transform = `translateY(${hover}px)`;
+        }
+
+        if (animationProgress < 3.5) {
+            requestAnimationFrame(animate);
+        } else {
+            isDrawing = false;
+        }
+    }
+
+    window.addEventListener('resize', () => {
+        setTimeout(init, 100);
+    });
+
+    init();
+</script>
+
+</body>
+</html>
